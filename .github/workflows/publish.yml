@@ -1,0 +1,140 @@
+name: Publish Skills
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify skill structure
+        run: |
+          echo "Checking skill structure..."
+
+          # Check required files exist
+          for file in \
+            "skills/promptrails/SKILL.md" \
+            "skills/promptrails/references/cli.md" \
+            "skills/promptrails/references/python-sdk.md" \
+            "skills/promptrails/references/javascript-sdk.md" \
+            "skills/promptrails/references/go-sdk.md" \
+            "skills/promptrails/references/agents.md" \
+            "skills/promptrails/references/prompts.md" \
+            "skills/promptrails/references/tracing.md" \
+            "skills/promptrails/references/mcp-tools.md" \
+            "skills/promptrails/references/data-sources.md" \
+            ".cursor-plugin/plugin.json" \
+            "package.json" \
+            "README.md" \
+            "LICENSE"; do
+            if [ ! -f "$file" ]; then
+              echo "ERROR: Missing required file: $file"
+              exit 1
+            fi
+            echo "  ✓ $file"
+          done
+
+          echo "All required files present."
+
+      - name: Validate SKILL.md frontmatter
+        run: |
+          # Check SKILL.md has required frontmatter
+          head -20 skills/promptrails/SKILL.md | grep -q "^name:" || { echo "ERROR: SKILL.md missing 'name' in frontmatter"; exit 1; }
+          head -20 skills/promptrails/SKILL.md | grep -q "description:" || { echo "ERROR: SKILL.md missing 'description' in frontmatter"; exit 1; }
+          echo "SKILL.md frontmatter is valid."
+
+      - name: Validate plugin.json
+        run: |
+          python3 -c "import json; json.load(open('.cursor-plugin/plugin.json'))" || { echo "ERROR: Invalid plugin.json"; exit 1; }
+          echo "plugin.json is valid JSON."
+
+      - name: Validate package.json
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8'))" || { echo "ERROR: Invalid package.json"; exit 1; }
+          echo "package.json is valid JSON."
+
+      - name: Check markdown links
+        run: |
+          # Check that reference links in SKILL.md point to existing files
+          cd skills/promptrails
+          grep -oP '\(references/[^)]+\)' SKILL.md | tr -d '()' | while read -r ref; do
+            if [ ! -f "$ref" ]; then
+              echo "ERROR: Broken reference link: $ref"
+              exit 1
+            fi
+            echo "  ✓ $ref"
+          done
+          echo "All reference links valid."
+
+  publish-npm:
+    name: Publish to npm
+    needs: validate
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version "$VERSION" --no-git-tag-version
+          echo "Publishing @promptrails/skills@$VERSION"
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release:
+    name: Create GitHub Release
+    needs: [validate, publish-npm]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## PromptRails Skills ${{ github.ref_name }}
+
+            ### Installation
+
+            **npm:**
+            ```bash
+            npm install @promptrails/skills
+            ```
+
+            **Cursor:**
+            ```
+            /add-plugin promptrails/skills
+            ```
+
+            **Skills CLI:**
+            ```bash
+            npx skills add promptrails/skills --skill "promptrails"
+            ```
+
+            See [README](https://github.com/promptrails/skills#installation) for all installation methods.

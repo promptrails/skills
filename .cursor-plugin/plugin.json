@@ -1,0 +1,13 @@
+{
+  "name": "promptrails",
+  "displayName": "PromptRails",
+  "version": "1.0.0",
+  "description": "Skills for working with PromptRails — the AI agent orchestration platform. Provides guidance for SDK usage (Python, JavaScript, Go), CLI commands, agent management, tracing, and more.",
+  "author": {
+    "name": "PromptRails",
+    "email": "support@promptrails.ai"
+  },
+  "category": "developer-tools",
+  "license": "MIT",
+  "skills": "./skills/"
+}
