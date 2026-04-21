@@ -1,9 +1,14 @@
 # PromptRails Python SDK Reference
 
+Current release: **v0.3.0** — typed SSE streaming events, typed
+`AgentConfig` classes, and the `promptrails.VERSION` constant. See the
+[CHANGELOG](https://github.com/promptrails/python-sdk/blob/main/CHANGELOG.md)
+for the full history.
+
 ## Installation
 
 ```bash
-pip install promptrails
+pip install "promptrails>=0.3.0"
 ```
 
 ## Client Initialization
@@ -93,6 +98,18 @@ client.prompts.create_version("prompt-id",
     cache_timeout=3600,
     message="Initial version"
 )
+
+# Run a prompt directly (no agent) — request body carries the rendered
+# prompt body and target model; input feeds Jinja variables
+response = client.prompts.run_prompt(
+    "prompt-id",
+    data={
+        "user_prompt": "Classify: {{ message }}",
+        "llm_model_id": "gpt-4o",
+        "input": {"message": "I want a refund"},
+    },
+)
+print(response.content, response.token_usage, response.cost)
 ```
 
 ### Executions
@@ -138,6 +155,50 @@ messages = client.chat.list_messages(session_id="session-id")
 reply = client.chat.send_message(session_id="session-id", content="Hello")
 client.chat.delete_session("session-id")
 ```
+
+### Streaming
+
+`send_message_stream` and `executions.stream` yield typed events over a
+single HTTP connection. Always dispatch on the concrete event class —
+unknown event names are silently dropped so the SDK is forward-compatible
+with new server events.
+
+```python
+from promptrails import (
+    PromptRails,
+    ExecutionEvent,
+    ThinkingEvent,
+    ToolStartEvent,
+    ToolEndEvent,
+    ContentEvent,
+    DoneEvent,
+    ErrorEvent,
+)
+
+client = PromptRails(api_key="pr_key_...")
+session = client.chat.create_session(agent_id="agent-id")
+
+for event in client.chat.send_message_stream(session.id, content="Hello"):
+    if isinstance(event, ExecutionEvent):
+        execution_id = event.execution_id
+    elif isinstance(event, ThinkingEvent):
+        print(f"[thinking] {event.content}")
+    elif isinstance(event, ToolStartEvent):
+        print(f"[tool_start] {event.name}")
+    elif isinstance(event, ToolEndEvent):
+        print(f"[tool_end] {event.name} — {event.summary}")
+    elif isinstance(event, ContentEvent):
+        print(event.content, end="", flush=True)
+    elif isinstance(event, DoneEvent):
+        print(f"\n[done] {event.token_usage.total_tokens} tokens")
+    elif isinstance(event, ErrorEvent):
+        raise RuntimeError(event.message)
+```
+
+When an execution was started outside chat (e.g. `agents.execute`),
+subscribe to its live events with `executions.stream(execution_id)`.
+The async client exposes the same method; `async for` over the
+generator.
 
 ### Traces
 

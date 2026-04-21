@@ -1,9 +1,13 @@
 # PromptRails Go SDK Reference
 
+Current release: **v0.3.1** — streaming chat & executions via
+`*ChatStream`, typed `AgentConfig` interface, `promptrails.Version`
+constant. Requires Go 1.21+.
+
 ## Installation
 
 ```bash
-go get github.com/promptrails/go-sdk
+go get github.com/promptrails/go-sdk@v0.3.1
 ```
 
 ## Client Initialization
@@ -141,6 +145,50 @@ messages, err := client.Chat.ListMessages(ctx, "session-id")
 reply, err := client.Chat.SendMessage(ctx, "session-id", &promptrails.SendMessageParams{Content: "Hello"})
 err := client.Chat.DeleteSession(ctx, "session-id")
 ```
+
+### Streaming
+
+`Chat.SendMessageStream` and `Executions.Stream` return a `*ChatStream`
+that iterates typed events on one HTTP connection. Always `defer
+stream.Close()`, and cancel mid-stream by cancelling `ctx`.
+
+```go
+session, err := client.Chat.CreateSession(ctx, &promptrails.CreateSessionParams{
+    AgentID: "agent-id",
+})
+if err != nil { log.Fatal(err) }
+
+stream, err := client.Chat.SendMessageStream(ctx, session.ID, &promptrails.SendMessageParams{
+    Content: "Hello",
+})
+if err != nil { log.Fatal(err) }
+defer stream.Close()
+
+for stream.Next() {
+    switch e := stream.Event().(type) {
+    case *promptrails.ExecutionEvent:
+        log.Printf("execution_id: %s", e.ExecutionID)
+    case *promptrails.ThinkingEvent:
+        log.Printf("[thinking] %s", e.Content)
+    case *promptrails.ToolStartEvent:
+        log.Printf("[tool_start] %s", e.Name)
+    case *promptrails.ToolEndEvent:
+        log.Printf("[tool_end] %s — %s", e.Name, e.Summary)
+    case *promptrails.ContentEvent:
+        fmt.Print(e.Content)
+    case *promptrails.DoneEvent:
+        fmt.Printf("\n[done] %d tokens\n", e.TokenUsage.TotalTokens)
+    case *promptrails.ErrorEvent:
+        log.Fatalf("[error] %s", e.Message)
+    }
+}
+if err := stream.Err(); err != nil {
+    log.Fatal(err)
+}
+```
+
+For an execution started outside chat (e.g. `Agents.Execute`), subscribe
+to its live SSE stream with `client.Executions.Stream(ctx, executionID)`.
 
 ### Traces
 

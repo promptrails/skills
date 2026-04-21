@@ -93,13 +93,42 @@ client.prompts.promote_version("prompt-id", "version-id")
 
 ## Testing
 
-Execute a prompt directly without an agent:
+Run a prompt directly without an agent. The request body carries the
+rendered prompt body and the target model; the `input` map supplies
+variables for Jinja templating.
 
 ```python
-result = client.prompts.execute("prompt-id",
-    input={"question": "What is machine learning?"}
+response = client.prompts.run_prompt(
+    "prompt-id",
+    data={
+        "system_prompt": "You are a support ticket classifier.",
+        "user_prompt": "Classify: {{ message }}",
+        "llm_model_id": "gpt-4o",
+        "temperature": 0.3,
+        "input": {"message": "I want a refund"},
+    },
 )
-print(result.output)
+print(response.content)
+print(response.token_usage, response.cost)
+```
+
+Other SDKs expose the same operation:
+
+```typescript
+const response = await client.prompts.runPrompt("prompt-id", {
+  system_prompt: "You are a support ticket classifier.",
+  user_prompt: "Classify: {{ message }}",
+  llm_model_id: "gpt-4o",
+  input: { message: "I want a refund" },
+});
+```
+
+```go
+response, err := client.Prompts.Run(ctx, "prompt-id", &promptrails.RunPromptParams{
+    UserPrompt: "Classify: {{ message }}",
+    LLMModelID: "gpt-4o",
+    Input:      map[string]any{"message": "I want a refund"},
+})
 ```
 
 ## Status

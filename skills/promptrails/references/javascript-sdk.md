@@ -1,11 +1,16 @@
 # PromptRails JavaScript/TypeScript SDK Reference
 
+Current release: **v0.3.1** — async-iterable SSE streaming events,
+discriminated `AgentConfig` union (5 agent types), full TypeScript types.
+See the [CHANGELOG](https://github.com/promptrails/javascript-sdk/blob/main/CHANGELOG.md)
+for the full history.
+
 ## Installation
 
 ```bash
-npm install @promptrails/sdk
+npm install @promptrails/sdk@^0.3.1
 # or
-pnpm add @promptrails/sdk
+pnpm add @promptrails/sdk@^0.3.1
 ```
 
 Requires Node.js 18+ (uses native `fetch`). Ships as both ESM and CJS.
@@ -125,6 +130,53 @@ const messages = await client.chat.listMessages({ sessionId: "session-id" });
 const reply = await client.chat.sendMessage({ sessionId: "session-id", content: "Hello" });
 await client.chat.deleteSession("session-id");
 ```
+
+### Streaming
+
+`chat.sendMessageStream` and `executions.stream` are async generators
+that yield typed `StreamEvent` frames on the same connection. Abort
+with an `AbortController` signal. Unknown event types are dropped so
+the client survives backward-compatible server additions.
+
+```typescript
+import { PromptRails, StreamEvent } from "@promptrails/sdk";
+
+const client = new PromptRails({ apiKey: "pr_key_..." });
+const session = await client.chat.createSession({ agentId: "agent-id" });
+
+const controller = new AbortController();
+for await (const event of client.chat.sendMessageStream(
+  session.id,
+  { content: "Hello" },
+  { signal: controller.signal },
+)) {
+  switch (event.type) {
+    case "execution":
+      console.log("execution_id:", event.executionId);
+      break;
+    case "thinking":
+      console.log("[thinking]", event.content);
+      break;
+    case "tool_start":
+      console.log("[tool_start]", event.name);
+      break;
+    case "tool_end":
+      console.log("[tool_end]", event.name, event.summary);
+      break;
+    case "content":
+      process.stdout.write(event.content);
+      break;
+    case "done":
+      console.log("\n[done]", event.tokenUsage?.total_tokens, "tokens");
+      break;
+    case "error":
+      throw new Error(event.message);
+  }
+}
+```
+
+Subscribe to an execution that was started outside chat (e.g.
+`agents.execute`) via `client.executions.stream(executionId, { signal })`.
 
 ### Traces
 

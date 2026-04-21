@@ -42,21 +42,97 @@ Combines multiple agent types into a single orchestration unit.
 
 ## Agent Configuration
 
-Each agent version carries a `config` object:
+Each agent version carries a typed `config` whose shape depends on the
+agent type. All three SDKs expose the config as a discriminated union
+of five variants — the SDK injects the `type` discriminator automatically
+so you never build the JSON by hand. Fields like guardrails, memory,
+and mcp tool attachments are managed via their own endpoints (see the
+`agents.create_guardrail`, `agents.create_memory`, and `mcp_tools`
+resources), not the config payload.
 
-| Field | Description |
-|-------|-------------|
-| `system_prompt` | Default system prompt |
-| `model` | LLM model identifier |
-| `temperature` | Sampling temperature (0.0–1.0) |
-| `max_tokens` | Maximum response tokens |
-| `top_p` | Nucleus sampling parameter |
-| `tools` | List of MCP tool IDs |
-| `data_sources` | List of data source IDs |
-| `guardrails` | Guardrail configurations |
-| `memory_enabled` | Whether memory system is active |
-| `approval_required` | Whether execution pauses for human approval |
-| `checkpoint_name` | Name of the approval checkpoint |
+### Typed Variants
+
+| Variant | Required fields | Notes |
+|---------|-----------------|-------|
+| `SimpleAgentConfig` | `prompt_id` | Optional `approval_required`, `approval_checkpoint_name`, `max_tokens`, `temperature`, `llm_model_id` |
+| `ChainAgentConfig` | `prompt_ids: PromptLink[]` | Sequential steps; optional approval fields |
+| `MultiAgentConfig` | `prompt_ids: PromptLink[]` | Parallel / routed sub-agents |
+| `WorkflowAgentConfig` | `nodes: WorkflowNode[]` | Graph of prompt, media, or tool nodes |
+| `CompositeAgentConfig` | `steps: CompositeStep[]` | Each step references another agent |
+
+`PromptLink` carries `{prompt_id, role, sort_order}`. `WorkflowNode` and
+`CompositeStep` have the per-type fields documented in each SDK's
+`agent_config` module.
+
+### Building a Config (Python)
+
+```python
+from promptrails import SimpleAgentConfig, ChainAgentConfig, PromptLink
+
+cfg = SimpleAgentConfig(
+    prompt_id="p1",
+    temperature=0.3,
+    approval_required=True,
+    approval_checkpoint_name="pii_review",
+)
+
+client.agents.create_version(
+    "agent-id",
+    config=cfg,          # .to_dict() injects "type": "simple" for you
+    set_current=True,
+    message="v2",
+)
+
+# Chain across multiple prompts
+chain = ChainAgentConfig(
+    prompt_ids=[
+        PromptLink(prompt_id="p1", role="extract", sort_order=0),
+        PromptLink(prompt_id="p2", role="summarize", sort_order=1),
+    ],
+)
+```
+
+### Building a Config (TypeScript)
+
+```typescript
+import { SimpleAgentConfig, ChainAgentConfig } from "@promptrails/sdk";
+
+const cfg: SimpleAgentConfig = {
+  type: "simple",
+  prompt_id: "p1",
+  temperature: 0.3,
+};
+
+await client.agents.createVersion("agent-id", {
+  config: cfg,
+  message: "v2",
+});
+```
+
+### Building a Config (Go)
+
+Implement `promptrails.AgentConfig` by using one of the concrete types —
+each one's `MarshalJSON` writes the correct `type` discriminator.
+
+```go
+cfg := promptrails.SimpleAgentConfig{
+    PromptID:    "p1",
+    Temperature: ptr.Float64(0.3),
+}
+
+_, err := client.Agents.CreateVersion(ctx, "agent-id", &promptrails.CreateVersionParams{
+    Config:     cfg,
+    Message:    "v2",
+    SetCurrent: true,
+})
+```
+
+### Migration from prompt_version_id
+
+Earlier SDK versions used `prompt_version_id` on simple and chain
+configs. That field was renamed to `prompt_id` — the agent executor now
+always resolves to the current version of a prompt. Legacy configs are
+migrated server-side, but new writes MUST use `prompt_id`.
 
 ## Agent Status
 

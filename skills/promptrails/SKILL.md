@@ -61,10 +61,50 @@ promptrails agent execute <agent-id> --input '{"query": "Hello"}'
 Create, update, version, and promote agents and prompts through any SDK or the CLI.
 
 - Agents support five types: `simple`, `chain`, `multi_agent`, `workflow`, `composite`
-- Prompts use Jinja2 templating with versioning and model assignment
+- Each SDK exposes typed `AgentConfig` classes (`SimpleAgentConfig`,
+  `ChainAgentConfig`, `MultiAgentConfig`, `WorkflowAgentConfig`,
+  `CompositeAgentConfig`) that inject the `type` discriminator
+  automatically — don't build the config JSON by hand
+- Prompts use Jinja2 templating with versioning and model assignment;
+  call `prompts.run_prompt()` (not `execute()`) to test one without an
+  agent
 - Both support input/output JSON schemas
 
-### 3. Observe and Debug
+### 3. Stream Live Output
+
+Chat turns and execution progress stream over SSE in all three SDKs.
+Iterate typed events and dispatch per event kind — `execution`,
+`thinking`, `tool_start`, `tool_end`, `content`, `done`, `error`.
+
+**Python:**
+```python
+for event in client.chat.send_message_stream(session_id, content="Hello"):
+    if isinstance(event, ContentEvent):
+        print(event.content, end="", flush=True)
+```
+
+**JavaScript:**
+```typescript
+for await (const event of client.chat.sendMessageStream(sessionId, { content: "Hello" })) {
+  if (event.type === "content") process.stdout.write(event.content);
+}
+```
+
+**Go:**
+```go
+stream, _ := client.Chat.SendMessageStream(ctx, sessionID, params)
+defer stream.Close()
+for stream.Next() {
+    if e, ok := stream.Event().(*promptrails.ContentEvent); ok {
+        fmt.Print(e.Content)
+    }
+}
+```
+
+For an execution started outside chat (e.g. `agents.execute`), subscribe
+to its live stream with `executions.stream(execution_id)`.
+
+### 4. Observe and Debug
 
 Use tracing to understand execution flow, costs, and errors:
 
@@ -74,7 +114,7 @@ traces = client.traces.list(agent_id="agent-id", kind="llm")
 
 18 span kinds track every step: `agent`, `llm`, `tool`, `datasource`, `prompt`, `guardrail`, `chain`, `workflow`, `agent_step`, `mcp_call`, `preprocessing`, `postprocessing`, `memory`, `embedding`, `speech`, `image`, `video`, `storage`.
 
-### 4. Look Up Documentation
+### 5. Look Up Documentation
 
 Fetch the latest PromptRails documentation:
 
@@ -107,12 +147,12 @@ curl https://promptrails.ai/docs/<topic>.md
 
 ## SDKs and Tools
 
-| Tool | Install | Docs |
-|------|---------|------|
-| Python SDK | `pip install promptrails` | [Reference](references/python-sdk.md) |
-| JavaScript SDK | `npm install @promptrails/sdk` | [Reference](references/javascript-sdk.md) |
-| Go SDK | `go get github.com/promptrails/go-sdk` | [Reference](references/go-sdk.md) |
-| CLI | `brew install promptrails/tap/promptrails` | [Reference](references/cli.md) |
+| Tool | Install | Current | Docs |
+|------|---------|---------|------|
+| Python SDK | `pip install "promptrails>=0.3.0"` | 0.3.0 | [Reference](references/python-sdk.md) |
+| JavaScript SDK | `npm install @promptrails/sdk@^0.3.1` | 0.3.1 | [Reference](references/javascript-sdk.md) |
+| Go SDK | `go get github.com/promptrails/go-sdk@v0.3.1` | 0.3.1 | [Reference](references/go-sdk.md) |
+| CLI | `brew install promptrails/tap/promptrails` | 0.3.0 | [Reference](references/cli.md) |
 
 ## Important Patterns
 
