@@ -70,14 +70,6 @@ err := client.Agents.PromoteVersion(ctx, "agent-id", "version-id")
 // Guardrails
 guardrails, err := client.Agents.ListGuardrails(ctx, "agent-id")
 err := client.Agents.CreateGuardrail(ctx, "agent-id", &promptrails.CreateGuardrailParams{...})
-
-// Memory
-memories, err := client.Agents.ListMemories(ctx, "agent-id")
-err := client.Agents.CreateMemory(ctx, "agent-id", &promptrails.CreateMemoryParams{
-    Type: "fact", Content: "User prefers dark mode",
-})
-results, err := client.Agents.SearchMemories(ctx, "agent-id", "preferences")
-err := client.Agents.DeleteAllMemories(ctx, "agent-id")
 ```
 
 ### Prompts

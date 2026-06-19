@@ -71,12 +71,6 @@ client.agents.create_version("agent-id", config={...}, message="v2")
 # Guardrails
 guardrails = client.agents.list_guardrails("agent-id")
 client.agents.create_guardrail("agent-id", scanner_type="prompt_injection", direction="input", action="block")
-
-# Memory
-memories = client.agents.list_memories("agent-id")
-client.agents.create_memory("agent-id", type="fact", content="User prefers dark mode")
-results = client.agents.search_memories("agent-id", query="preferences")
-client.agents.delete_all_memories("agent-id")
 ```
 
 ### Prompts

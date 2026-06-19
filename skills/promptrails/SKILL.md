@@ -112,7 +112,7 @@ Use tracing to understand execution flow, costs, and errors:
 traces = client.traces.list(agent_id="agent-id", kind="llm")
 ```
 
-18 span kinds track every step: `agent`, `llm`, `tool`, `datasource`, `prompt`, `guardrail`, `chain`, `workflow`, `agent_step`, `mcp_call`, `preprocessing`, `postprocessing`, `memory`, `embedding`, `speech`, `image`, `video`, `storage`.
+17 span kinds track every step: `agent`, `llm`, `tool`, `datasource`, `prompt`, `guardrail`, `chain`, `workflow`, `agent_step`, `mcp_call`, `preprocessing`, `postprocessing`, `embedding`, `speech`, `image`, `video`, `storage`.
 
 ### 5. Look Up Documentation
 
@@ -126,7 +126,7 @@ curl https://promptrails.ai/llms.txt
 curl https://promptrails.ai/docs/<topic>.md
 
 # Available topics: agents, prompts, executions, tracing, guardrails,
-# mcp-tools, data-sources, memory, scoring-and-evaluation, approvals,
+# mcp-tools, data-sources, scoring-and-evaluation, approvals,
 # cli, python-sdk, javascript-sdk, go-sdk, quickstart, and more
 ```
 
@@ -134,14 +134,13 @@ curl https://promptrails.ai/docs/<topic>.md
 
 | Concept | Description |
 |---------|-------------|
-| **Agent** | Execution unit combining prompts, tools, data sources, guardrails, and memory |
+| **Agent** | Execution unit combining prompts, tools, data sources, and guardrails |
 | **Prompt** | Versioned Jinja2 template with model assignment and caching |
 | **Execution** | A single agent run with status, output, cost, and trace |
 | **Trace** | Tree of spans recording every step of an execution |
 | **MCP Tool** | External tool connected via Model Context Protocol (API, datasource, builtin, remote_mcp) |
 | **Data Source** | Database connection with versioned parameterized queries |
 | **Guardrail** | Input/output scanner (toxicity, PII, prompt injection, etc.) |
-| **Memory** | Agent memory system (conversation, fact, procedure, episodic, semantic) |
 | **Score** | Execution quality metric (numeric, categorical, or boolean) |
 | **Credential** | Encrypted provider credentials (OpenAI, Anthropic, Gemini, etc.) |
 

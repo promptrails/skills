@@ -14,7 +14,7 @@ Every execution generates a **trace** — a tree of **spans**:
   [guardrail] pii output scan (2ms)
 ```
 
-## 18 Span Kinds
+## 17 Span Kinds
 
 | Kind | Description |
 |------|-------------|
@@ -30,7 +30,6 @@ Every execution generates a **trace** — a tree of **spans**:
 | `mcp_call` | Remote MCP server call |
 | `preprocessing` | Input preprocessing |
 | `postprocessing` | Output postprocessing |
-| `memory` | Memory retrieval/storage |
 | `embedding` | Vector embedding generation |
 | `speech` | Text-to-speech / speech-to-text |
 | `image` | Image generation/editing |

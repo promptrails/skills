@@ -45,10 +45,10 @@ Combines multiple agent types into a single orchestration unit.
 Each agent version carries a typed `config` whose shape depends on the
 agent type. All three SDKs expose the config as a discriminated union
 of five variants — the SDK injects the `type` discriminator automatically
-so you never build the JSON by hand. Fields like guardrails, memory,
-and mcp tool attachments are managed via their own endpoints (see the
-`agents.create_guardrail`, `agents.create_memory`, and `mcp_tools`
-resources), not the config payload.
+so you never build the JSON by hand. Fields like guardrails and mcp tool
+attachments are managed via their own endpoints (see the
+`agents.create_guardrail` and `mcp_tools` resources), not the config
+payload.
 
 ### Typed Variants
 
@@ -206,13 +206,3 @@ print(result.duration_ms)  # Execution time
 - And more
 
 Configure per agent with `block`, `redact`, or `log` actions.
-
-## Memory
-
-Five memory types for context-aware agents:
-
-- **conversation** — Chat history
-- **fact** — Learned facts
-- **procedure** — Workflows and processes
-- **episodic** — Past events and experiences
-- **semantic** — Conceptual knowledge with vector embeddings

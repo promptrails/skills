@@ -58,12 +58,6 @@ const guardrails = await client.agents.listGuardrails("agent-id");
 await client.agents.createGuardrail("agent-id", {
   scannerType: "prompt_injection", direction: "input", action: "block"
 });
-
-// Memory
-const memories = await client.agents.listMemories("agent-id");
-await client.agents.createMemory("agent-id", { type: "fact", content: "User prefers dark mode" });
-const results = await client.agents.searchMemories("agent-id", { query: "preferences" });
-await client.agents.deleteAllMemories("agent-id");
 ```
 
 ### Prompts
