@@ -2,15 +2,17 @@
 
 ## Overview
 
-Prompts are versioned Jinja2 templates with model assignment, caching, and structured schemas.
+Prompts are versioned, **content-only** Jinja2 templates.
 
-A prompt consists of:
+A prompt version consists of:
 - **System prompt** — LLM role and behavior instructions
 - **User prompt** — Jinja2 template that renders user input
-- **Model assignment** — Primary model + optional fallback
-- **Parameters** — Temperature, max tokens, top_p
-- **Input/output schemas** — JSON schemas for validation
-- **Cache timeout** — Response caching duration
+- **Input schema** — JSON schema for validating template variables
+
+Model + sampling (`model_config`), fallback, response caching
+(`cache_timeout`), output schema, and tool/sub-agent attachments are **not**
+part of the prompt — they live on the **agent version** that references the
+prompt (see the [Agents Guide](agents.md)).
 
 ## Jinja2 Templating
 
@@ -48,39 +50,26 @@ Document {{ loop.index }}: {{ doc.title }}
 {{ text | truncate(200) }}
 ```
 
-## Model Assignment
+## Model, Sampling, and Caching
 
-Each version specifies:
-- **Primary model** — Default for execution
-- **Fallback model** — Used if primary fails
-
-Supported providers: OpenAI, Anthropic, Google Gemini, DeepSeek, Fireworks, xAI, OpenRouter.
-
-## Caching
-
-Set `cache_timeout` (seconds) on a version to cache identical inputs:
-
-```python
-client.prompts.create_version("prompt-id",
-    system_prompt="...",
-    user_prompt="Translate '{{ text }}' to {{ target_language }}.",
-    cache_timeout=3600,  # 1 hour
-    message="Added caching"
-)
-```
-
-Cache key = rendered prompt content (after template substitution).
+These are **not** prompt fields. The agent version that references the
+prompt owns the model + fallback (`model_config`), sampling, and response
+caching (`cache_timeout`). Supported providers: OpenAI, Anthropic, Google
+Gemini, DeepSeek, Fireworks, xAI, OpenRouter. See the
+[Agents Guide](agents.md) for `create_version` with `model_config` and
+`cache_timeout`.
 
 ## Versioning
 
-Immutable versions with promotion:
+Immutable, content-only versions with promotion:
 
 ```python
 # Create version
 client.prompts.create_version("prompt-id",
+    version="1",
     system_prompt="You are helpful.",
     user_prompt="Answer: {{ question }}",
-    temperature=0.7,
+    input_schema={"type": "object", "properties": {"question": {"type": "string"}}},
     message="v1"
 )
 
@@ -93,41 +82,37 @@ client.prompts.promote_version("prompt-id", "version-id")
 
 ## Testing
 
-Run a prompt directly without an agent. The request body carries the
-rendered prompt body and the target model; the `input` map supplies
-variables for Jinja templating.
+There is no standalone "run prompt" endpoint. To try prompt content
+without saving a version, use the agent **playground** with an ad-hoc
+`prompt_override` — the agent version supplies the runtime (model, tools),
+and `prompt_override` carries `system_prompt` / `user_prompt` /
+`input_schema`:
 
 ```python
-response = client.prompts.run_prompt(
-    "prompt-id",
-    data={
+result = client.agents.playground(
+    "agent-id",
+    input={"message": "I want a refund"},
+    prompt_override={
         "system_prompt": "You are a support ticket classifier.",
         "user_prompt": "Classify: {{ message }}",
-        "llm_model_id": "gpt-4o",
-        "temperature": 0.3,
-        "input": {"message": "I want a refund"},
     },
 )
-print(response.content)
-print(response.token_usage, response.cost)
 ```
 
-Other SDKs expose the same operation:
-
 ```typescript
-const response = await client.prompts.runPrompt("prompt-id", {
-  system_prompt: "You are a support ticket classifier.",
-  user_prompt: "Classify: {{ message }}",
-  llm_model_id: "gpt-4o",
+const result = await client.agents.playground("agent-id", {
   input: { message: "I want a refund" },
+  prompt_override: {
+    system_prompt: "You are a support ticket classifier.",
+    user_prompt: "Classify: {{ message }}",
+  },
 });
 ```
 
 ```go
-response, err := client.Prompts.Run(ctx, "prompt-id", &promptrails.RunPromptParams{
-    UserPrompt: "Classify: {{ message }}",
-    LLMModelID: "gpt-4o",
-    Input:      map[string]any{"message": "I want a refund"},
+result, err := client.Agents.Playground(ctx, "agent-id", &promptrails.PlaygroundParams{
+    Input:          map[string]any{"message": "I want a refund"},
+    PromptOverride: map[string]any{"user_prompt": "Classify: {{ message }}"},
 })
 ```
 

@@ -85,14 +85,27 @@ Define JSON schemas for tool parameters:
 
 ## Adding Tools to Agents
 
-Link tools via agent version config:
+Attach tools on the agent version via `tools` (a list of `ToolAttachment`),
+a sibling of `config` — not inside the config payload. Sampling like
+`temperature` lives on `model_config`:
 
 ```python
+from promptrails import PromptAgentConfig, ToolAttachment, ModelConfig
+
 client.agents.create_version("agent-id",
-    config={"tools": ["tool-id-1", "tool-id-2"], "temperature": 0.7},
-    message="Added tools"
+    version="2",
+    config=PromptAgentConfig(prompt_id="prompt-id"),
+    tools=[
+        ToolAttachment(mcp_tool_id="tool-id-1"),
+        ToolAttachment(mcp_tool_id="tool-id-2", requires_approval=True),
+    ],
+    model_config=ModelConfig(temperature=0.7),
+    message="Added tools",
 )
 ```
+
+Each `ToolAttachment` carries per-tool policy: `requires_approval` (parks
+the execution at `waiting_approval` before the call) and `no_retry`.
 
 ## Tool Invocation Flow
 
