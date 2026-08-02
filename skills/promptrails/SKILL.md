@@ -60,14 +60,17 @@ promptrails agent execute <agent-id> --input '{"query": "Hello"}'
 
 Create, update, version, and promote agents and prompts through any SDK or the CLI.
 
-- Agents support five types: `simple`, `chain`, `multi_agent`, `workflow`, `composite`
-- Each SDK exposes typed `AgentConfig` classes (`SimpleAgentConfig`,
-  `ChainAgentConfig`, `MultiAgentConfig`, `WorkflowAgentConfig`,
-  `CompositeAgentConfig`) that inject the `type` discriminator
+- Agents have two types: `agent` (a prompt plus optional tools/sub-agents —
+  a supervisor when it has sub-agents) and `workflow` (a deterministic DAG)
+- Each SDK exposes typed config classes (`PromptAgentConfig`,
+  `WorkflowAgentConfig`) that inject the `type` discriminator
   automatically — don't build the config JSON by hand
-- Prompts use Jinja2 templating with versioning and model assignment;
-  call `prompts.run_prompt()` (not `execute()`) to test one without an
-  agent
+- Model + sampling, run budget, approval policy, cache TTL, and tool /
+  sub-agent / guardrail attachments live on the **agent version** (siblings
+  of `config`), not inside the config payload
+- Prompts are content-only (Jinja2 system/user templates + input schema);
+  to try a prompt without saving a version, use `agents.playground()` with
+  an ad-hoc `prompt_override`
 - Both support input/output JSON schemas
 
 ### 3. Stream Live Output
@@ -126,32 +129,32 @@ curl https://promptrails.ai/llms.txt
 curl https://promptrails.ai/docs/<topic>.md
 
 # Available topics: agents, prompts, executions, tracing, guardrails,
-# mcp-tools, data-sources, scoring-and-evaluation, approvals,
-# cli, python-sdk, javascript-sdk, go-sdk, quickstart, and more
+# mcp-tools, data-sources, approvals, cli, python-sdk,
+# javascript-sdk, go-sdk, quickstart, and more
 ```
 
 ## Key Concepts
 
 | Concept | Description |
 |---------|-------------|
-| **Agent** | Execution unit combining prompts, tools, data sources, and guardrails |
-| **Prompt** | Versioned Jinja2 template with model assignment and caching |
-| **Execution** | A single agent run with status, output, cost, and trace |
+| **Agent** | Execution unit combining a prompt, tools, sub-agents, data sources, and guardrails |
+| **Prompt** | Versioned, content-only Jinja2 template (model/sampling live on the agent version) |
+| **Execution** | An agent run — a node in an execution tree — with status, output, cost, and trace |
 | **Trace** | Tree of spans recording every step of an execution |
 | **MCP Tool** | External tool connected via Model Context Protocol (API, datasource, builtin, remote_mcp) |
 | **Data Source** | Database connection with versioned parameterized queries |
 | **Guardrail** | Input/output scanner (toxicity, PII, prompt injection, etc.) |
-| **Score** | Execution quality metric (numeric, categorical, or boolean) |
+| **Approval** | Execution parked at `waiting_approval`, resumed via approve/deny |
 | **Credential** | Encrypted provider credentials (OpenAI, Anthropic, Gemini, etc.) |
 
 ## SDKs and Tools
 
 | Tool | Install | Current | Docs |
 |------|---------|---------|------|
-| Python SDK | `pip install "promptrails>=0.3.0"` | 0.3.0 | [Reference](references/python-sdk.md) |
-| JavaScript SDK | `npm install @promptrails/sdk@^0.3.1` | 0.3.1 | [Reference](references/javascript-sdk.md) |
-| Go SDK | `go get github.com/promptrails/go-sdk@v0.3.1` | 0.3.1 | [Reference](references/go-sdk.md) |
-| CLI | `brew install promptrails/tap/promptrails` | 0.3.0 | [Reference](references/cli.md) |
+| Python SDK | `pip install "promptrails>=0.9.0"` | 0.9.0 | [Reference](references/python-sdk.md) |
+| JavaScript SDK | `npm install @promptrails/sdk@^0.9.0` | 0.9.0 | [Reference](references/javascript-sdk.md) |
+| Go SDK | `go get github.com/promptrails/go-sdk@v0.7.0` | 0.7.0 | [Reference](references/go-sdk.md) |
+| CLI | `brew install promptrails/tap/promptrails` | latest | [Reference](references/cli.md) |
 
 ## Important Patterns
 

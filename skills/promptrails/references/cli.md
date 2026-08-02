@@ -42,7 +42,7 @@ promptrails status
 
 ```bash
 promptrails agent list                           # List agents
-promptrails agent list --type simple             # Filter by type
+promptrails agent list --type agent              # Filter by type (agent | workflow)
 promptrails agent get <id>                       # Get details
 promptrails agent create --name "My Agent"       # Create
 promptrails agent update <id> --name "New Name"  # Update
@@ -58,10 +58,12 @@ promptrails agent promote <id> <version-id>      # Set current version
 promptrails prompt list
 promptrails prompt get <id>
 promptrails prompt create --name "My Prompt"
-promptrails prompt run <id> --user-prompt "Hello"
 promptrails prompt versions <id>
 promptrails prompt promote <id> <version-id>
 ```
+
+Prompts are content-only. To try prompt content without an agent, use the
+agent playground (`promptrails agent playground <id>`).
 
 ### Executions
 
@@ -70,6 +72,13 @@ promptrails execution list
 promptrails execution list --agent <id>
 promptrails execution list --status completed
 promptrails execution get <id>
+promptrails execution tree <id>                  # full execution tree
+promptrails execution cancel <id>                # cooperative cancel
+
+# Human-in-the-loop approvals (execution-scoped)
+promptrails execution approval-inbox             # runs parked at waiting_approval
+promptrails execution approve <id>
+promptrails execution deny <id>
 ```
 
 ### Credentials
@@ -99,13 +108,6 @@ promptrails wt update <trigger-id> --active
 promptrails wt delete <trigger-id>
 ```
 
-### Media Studio
-
-```bash
-promptrails media generate --provider stability --media-type image_gen --model sd3.5-large --prompt "A sunset"
-promptrails media generate --provider elevenlabs --media-type tts --model eleven_multilingual_v2 --prompt "Hello"
-```
-
 ### Assets
 
 ```bash
@@ -114,14 +116,6 @@ promptrails assets list --type image
 promptrails assets get <id>
 promptrails assets signed-url <id>
 promptrails assets delete <id>
-```
-
-### Media Models
-
-```bash
-promptrails media-models list
-promptrails media-models list --provider fal
-promptrails media-models list --media-type tts
 ```
 
 ## Global Flags

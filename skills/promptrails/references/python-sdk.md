@@ -1,14 +1,15 @@
 # PromptRails Python SDK Reference
 
-Current release: **v0.3.0** — typed SSE streaming events, typed
-`AgentConfig` classes, and the `promptrails.VERSION` constant. See the
-[CHANGELOG](https://github.com/promptrails/python-sdk/blob/main/CHANGELOG.md)
+Current release: **v0.9.0** — API v2: two agent types (`agent` |
+`workflow`), version-scoped `ModelConfig` / `RunBudget` / `ApprovalPolicy`,
+execution trees with cancel + HITL approvals, and `traces.get_summary`. See
+the [CHANGELOG](https://github.com/promptrails/python-sdk/blob/main/CHANGELOG.md)
 for the full history.
 
 ## Installation
 
 ```bash
-pip install "promptrails>=0.3.0"
+pip install "promptrails>=0.9.0"
 ```
 
 ## Client Initialization
@@ -52,8 +53,8 @@ agents = client.agents.list(page=1, limit=20)
 # Get agent
 agent = client.agents.get("agent-id")
 
-# Create agent
-agent = client.agents.create(name="My Agent", type="simple", description="...", labels=["prod"])
+# Create agent — type is "agent" or "workflow"
+agent = client.agents.create(name="My Agent", type="agent", description="...")
 
 # Update agent
 client.agents.update("agent-id", name="New Name")
@@ -64,13 +65,32 @@ client.agents.delete("agent-id")
 # Execute agent
 result = client.agents.execute("agent-id", input={"query": "hello"}, metadata={"user_id": "123"})
 
-# Versions
+# Versions — config is structure; model/budget/tools are version-scoped siblings
+from promptrails import PromptAgentConfig, ModelConfig, RunBudget, ToolAttachment
+
 versions = client.agents.list_versions("agent-id")
-client.agents.create_version("agent-id", config={...}, message="v2")
+client.agents.create_version(
+    "agent-id",
+    version="2",
+    config=PromptAgentConfig(prompt_id="p1"),
+    model_config=ModelConfig(model_id="gpt-4o", temperature=0.3),
+    run_budget=RunBudget(max_cost=1.0, max_tool_calls=20),
+    tools=[ToolAttachment(mcp_tool_id="tool-1", requires_approval=True)],
+    set_current=True,
+    message="v2",
+)
+client.agents.promote_version("agent-id", "version-id")
+
+# Playground — run with an ad-hoc prompt override, no saved version
+client.agents.playground(
+    "agent-id",
+    input={"query": "hello"},
+    prompt_override={"user_prompt": "Answer: {{ query }}"},
+)
 
 # Guardrails
 guardrails = client.agents.list_guardrails("agent-id")
-client.agents.create_guardrail("agent-id", scanner_type="prompt_injection", direction="input", action="block")
+client.agents.create_guardrail("agent-id", type="input", scanner_type="prompt_injection", action="block")
 ```
 
 ### Prompts
@@ -82,28 +102,15 @@ prompt = client.prompts.create(name="My Prompt", description="...")
 client.prompts.update("prompt-id", name="Updated")
 client.prompts.delete("prompt-id")
 
-# Versions
+# Versions — prompts are content-only (model/sampling/cache live on the agent version)
 versions = client.prompts.list_versions("prompt-id")
 client.prompts.create_version("prompt-id",
+    version="1",
     system_prompt="You are helpful.",
     user_prompt="Answer: {{ question }}",
-    temperature=0.7,
-    max_tokens=1024,
-    cache_timeout=3600,
+    input_schema={"type": "object", "properties": {"question": {"type": "string"}}},
     message="Initial version"
 )
-
-# Run a prompt directly (no agent) — request body carries the rendered
-# prompt body and target model; input feeds Jinja variables
-response = client.prompts.run_prompt(
-    "prompt-id",
-    data={
-        "user_prompt": "Classify: {{ message }}",
-        "llm_model_id": "gpt-4o",
-        "input": {"message": "I want a refund"},
-    },
-)
-print(response.content, response.token_usage, response.cost)
 ```
 
 ### Executions
@@ -111,6 +118,15 @@ print(response.content, response.token_usage, response.cost)
 ```python
 executions = client.executions.list(agent_id="agent-id", status="completed")
 execution = client.executions.get("execution-id")
+
+# Executions form a tree (supervisor delegation, handoff, workflow nodes)
+tree = client.executions.tree("execution-id")     # root + nested children
+client.executions.cancel("execution-id")           # cooperative cancel
+
+# Human-in-the-loop approvals (execution-scoped)
+inbox = client.executions.approval_inbox()          # runs parked at waiting_approval
+client.executions.approve("execution-id", reason="ok")
+client.executions.deny("execution-id", reason="not allowed")
 ```
 
 ### Credentials
@@ -199,25 +215,10 @@ generator.
 ```python
 traces = client.traces.list(agent_id="agent-id", kind="llm", status="ok")
 trace = client.traces.get_by_trace_id("trace-id")
-```
 
-### Costs
-
-```python
-summary = client.costs.get_summary()
-agent_costs = client.costs.get_agent_summary(agent_id="agent-id")
-```
-
-### Scores
-
-```python
-scores = client.scores.list(execution_id="exec-id")
-score = client.scores.create(execution_id="exec-id", config_id="config-id", value=0.95)
-
-# Score configs
-configs = client.scores.list_configs()
-config = client.scores.create_config(name="Accuracy", type="numeric", min_value=0, max_value=1)
-aggregates = client.scores.aggregates(config_id="config-id")
+# Aggregate cost / token / latency stats over a filtered set of traces
+summary = client.traces.get_summary(agent_id="agent-id")
+print(summary.total_cost, summary.total_tokens, summary.avg_duration_ms)
 ```
 
 ### MCP Tools
@@ -231,11 +232,8 @@ client.mcp_tools.delete("tool-id")
 
 ### Approvals
 
-```python
-approvals = client.approvals.list()
-approval = client.approvals.get("approval-id")
-client.approvals.decide("approval-id", decision="approved")  # or "rejected"
-```
+Approvals are execution-scoped — see the `executions.approval_inbox` /
+`executions.approve` / `executions.deny` methods under **Executions**.
 
 ### Webhook Triggers
 
@@ -256,19 +254,9 @@ tasks = client.a2a.list_tasks(agent_id="agent-id")
 client.a2a.cancel_task("task-id")
 ```
 
-### Media
+### Assets
 
 ```python
-# List models
-models = client.media_models.list(media_type="image")
-
-# Generate
-result = client.media.generate(
-    provider="fal", media_type="image", model="fal-ai/flux/schnell",
-    prompt="A sunset", config={"width": 1024, "height": 768}
-)
-
-# Assets
 assets = client.assets.list(type="image")
 signed = client.assets.get_signed_url("asset-id")
 client.assets.delete("asset-id")

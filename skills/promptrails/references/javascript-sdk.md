@@ -1,16 +1,18 @@
 # PromptRails JavaScript/TypeScript SDK Reference
 
-Current release: **v0.3.1** — async-iterable SSE streaming events,
-discriminated `AgentConfig` union (5 agent types), full TypeScript types.
-See the [CHANGELOG](https://github.com/promptrails/javascript-sdk/blob/main/CHANGELOG.md)
+Current release: **v0.9.0** — API v2: discriminated `AgentConfig` union
+(2 agent types: `agent` | `workflow`), version-scoped `ModelConfig` /
+`RunBudget` / `ApprovalPolicy`, execution trees with cancel + HITL
+approvals, and `traces.getSummary`. See the
+[CHANGELOG](https://github.com/promptrails/javascript-sdk/blob/main/CHANGELOG.md)
 for the full history.
 
 ## Installation
 
 ```bash
-npm install @promptrails/sdk@^0.3.1
+npm install @promptrails/sdk@^0.9.0
 # or
-pnpm add @promptrails/sdk@^0.3.1
+pnpm add @promptrails/sdk@^0.9.0
 ```
 
 Requires Node.js 18+ (uses native `fetch`). Ships as both ESM and CJS.
@@ -39,7 +41,8 @@ const client = new PromptRails({ apiKey: "pr_key_..." });
 ```typescript
 const agents = await client.agents.list({ page: 1, limit: 20 });
 const agent = await client.agents.get("agent-id");
-const created = await client.agents.create({ name: "My Agent", type: "simple", labels: ["prod"] });
+// type is "agent" or "workflow"
+const created = await client.agents.create({ name: "My Agent", type: "agent" });
 await client.agents.update("agent-id", { name: "New Name" });
 await client.agents.delete("agent-id");
 
@@ -49,14 +52,29 @@ const result = await client.agents.execute("agent-id", {
   metadata: { userId: "123" },
 });
 
-// Versions
+// Versions — config is structure; model/budget/tools are version-scoped siblings
 const versions = await client.agents.listVersions("agent-id");
-await client.agents.createVersion("agent-id", { config: {...}, message: "v2" });
+await client.agents.createVersion("agent-id", {
+  version: "2",
+  config: { type: "agent", prompt_id: "p1" },
+  model_config: { model_id: "gpt-4o", temperature: 0.3 },
+  run_budget: { max_cost: 1.0, max_tool_calls: 20 },
+  tools: [{ mcp_tool_id: "tool-1", requires_approval: true }],
+  set_current: true,
+  message: "v2",
+});
+await client.agents.promoteVersion("agent-id", "version-id");
+
+// Playground — run with an ad-hoc prompt override, no saved version
+await client.agents.playground("agent-id", {
+  input: { query: "hello" },
+  prompt_override: { user_prompt: "Answer: {{ query }}" },
+});
 
 // Guardrails
 const guardrails = await client.agents.listGuardrails("agent-id");
 await client.agents.createGuardrail("agent-id", {
-  scannerType: "prompt_injection", direction: "input", action: "block"
+  type: "input", scannerType: "prompt_injection", action: "block"
 });
 ```
 
@@ -69,13 +87,13 @@ const created = await client.prompts.create({ name: "My Prompt" });
 await client.prompts.update("prompt-id", { name: "Updated" });
 await client.prompts.delete("prompt-id");
 
-// Versions
+// Versions — prompts are content-only (model/sampling/cache live on the agent version)
 const versions = await client.prompts.listVersions("prompt-id");
 await client.prompts.createVersion("prompt-id", {
+  version: "1",
   systemPrompt: "You are helpful.",
   userPrompt: "Answer: {{ question }}",
-  temperature: 0.7,
-  maxTokens: 1024,
+  inputSchema: { type: "object", properties: { question: { type: "string" } } },
   message: "Initial version",
 });
 ```
@@ -85,6 +103,15 @@ await client.prompts.createVersion("prompt-id", {
 ```typescript
 const executions = await client.executions.list({ agentId: "agent-id", status: "completed" });
 const execution = await client.executions.get("execution-id");
+
+// Executions form a tree (supervisor delegation, handoff, workflow nodes)
+const tree = await client.executions.tree("execution-id");
+await client.executions.cancel("execution-id");
+
+// Human-in-the-loop approvals (execution-scoped)
+const inbox = await client.executions.approvalInbox();
+await client.executions.approve("execution-id", { reason: "ok" });
+await client.executions.deny("execution-id", { reason: "not allowed" });
 ```
 
 ### Credentials
@@ -177,23 +204,9 @@ Subscribe to an execution that was started outside chat (e.g.
 ```typescript
 const traces = await client.traces.list({ agentId: "agent-id", kind: "llm" });
 const trace = await client.traces.getByTraceId("trace-id");
-```
 
-### Costs
-
-```typescript
-const summary = await client.costs.getSummary();
-const agentCosts = await client.costs.getAgentSummary({ agentId: "agent-id" });
-```
-
-### Scores
-
-```typescript
-const scores = await client.scores.list({ executionId: "exec-id" });
-const score = await client.scores.create({ executionId: "exec-id", configId: "config-id", value: 0.95 });
-const configs = await client.scores.listConfigs();
-const config = await client.scores.createConfig({ name: "Accuracy", type: "numeric" });
-const aggregates = await client.scores.aggregates({ configId: "config-id" });
+// Aggregate cost / token / latency stats over a filtered set of traces
+const summary = await client.traces.getSummary({ agentId: "agent-id" });
 ```
 
 ### MCP Tools
@@ -207,11 +220,8 @@ await client.mcpTools.delete("tool-id");
 
 ### Approvals
 
-```typescript
-const approvals = await client.approvals.list();
-const approval = await client.approvals.get("approval-id");
-await client.approvals.decide("approval-id", { decision: "approved" });
-```
+Approvals are execution-scoped — see `executions.approvalInbox` /
+`executions.approve` / `executions.deny` under **Executions**.
 
 ### Webhook Triggers
 
@@ -232,19 +242,9 @@ const tasks = await client.a2a.listTasks({ agentId: "agent-id" });
 await client.a2a.cancelTask("task-id");
 ```
 
-### Media
+### Assets
 
 ```typescript
-// List models
-const models = await client.mediaModels.list({ provider: "fal", media_type: "image" });
-
-// Generate
-const result = await client.media.generate({
-  provider: "fal", media_type: "image", model: "fal-ai/flux/schnell",
-  prompt: "A sunset", config: { width: 1024, height: 1024 },
-});
-
-// Assets
 const assets = await client.assets.list({ type: "image" });
 const { url } = await client.assets.getSignedUrl("asset-id");
 await client.assets.delete("asset-id");

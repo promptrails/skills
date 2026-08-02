@@ -1,13 +1,14 @@
 # PromptRails Go SDK Reference
 
-Current release: **v0.3.1** — streaming chat & executions via
-`*ChatStream`, typed `AgentConfig` interface, `promptrails.Version`
-constant. Requires Go 1.21+.
+Current release: **v0.7.0** — API v2: two agent types (`PromptAgentConfig`
+| `WorkflowAgentConfig`), version-scoped `ModelConfig` / `RunBudget` /
+`ApprovalPolicy`, execution trees with cancel + HITL approvals, and
+`Traces.GetSummary`. Requires Go 1.21+.
 
 ## Installation
 
 ```bash
-go get github.com/promptrails/go-sdk@v0.3.1
+go get github.com/promptrails/go-sdk@v0.7.0
 ```
 
 ## Client Initialization
@@ -46,9 +47,9 @@ agents, err := client.Agents.List(ctx, &promptrails.ListAgentsParams{Page: 1, Li
 // Get
 agent, err := client.Agents.Get(ctx, "agent-id")
 
-// Create
+// Create — Type is "agent" or "workflow"
 agent, err := client.Agents.Create(ctx, &promptrails.CreateAgentParams{
-    Name: "My Agent", Type: "simple", Description: "...",
+    Name: "My Agent", Type: "agent", Description: "...",
 })
 
 // Update
@@ -62,10 +63,24 @@ result, err := client.Agents.Execute(ctx, "agent-id", &promptrails.ExecuteAgentP
     Input: map[string]any{"query": "hello"},
 })
 
-// Versions
+// Versions — Config is structure; ModelConfig/RunBudget/Tools are version-scoped siblings
 versions, err := client.Agents.ListVersions(ctx, "agent-id")
-err := client.Agents.CreateVersion(ctx, "agent-id", &promptrails.CreateVersionParams{...})
+_, err := client.Agents.CreateVersion(ctx, "agent-id", &promptrails.CreateVersionParams{
+    Version:     "2",
+    Config:      promptrails.PromptAgentConfig{PromptID: "p1"},
+    ModelConfig: &promptrails.ModelConfig{ModelID: "gpt-4o", Temperature: ptr.Float64(0.3)},
+    RunBudget:   &promptrails.RunBudget{MaxCost: ptr.Float64(1.0)},
+    Tools:       []promptrails.ToolAttachment{{MCPToolID: "tool-1", RequiresApproval: true}},
+    SetCurrent:  true,
+    Message:     "v2",
+})
 err := client.Agents.PromoteVersion(ctx, "agent-id", "version-id")
+
+// Playground — run with an ad-hoc prompt override, no saved version
+_, err := client.Agents.Playground(ctx, "agent-id", &promptrails.PlaygroundParams{
+    Input:          map[string]any{"query": "hello"},
+    PromptOverride: map[string]any{"user_prompt": "Answer: {{ query }}"},
+})
 
 // Guardrails
 guardrails, err := client.Agents.ListGuardrails(ctx, "agent-id")
@@ -81,20 +96,15 @@ prompt, err := client.Prompts.Create(ctx, &promptrails.CreatePromptParams{Name: 
 err := client.Prompts.Update(ctx, "prompt-id", &promptrails.UpdatePromptParams{Name: "Updated"})
 err := client.Prompts.Delete(ctx, "prompt-id")
 
-// Versions
+// Versions — prompts are content-only (model/sampling/cache live on the agent version)
 versions, err := client.Prompts.ListVersions(ctx, "prompt-id")
 err := client.Prompts.CreateVersion(ctx, "prompt-id", &promptrails.CreatePromptVersionParams{
+    Version:      "1",
     SystemPrompt: "You are helpful.",
     UserPrompt:   "Answer: {{ question }}",
-    Temperature:  0.7,
     Message:      "Initial version",
 })
 err := client.Prompts.PromoteVersion(ctx, "prompt-id", "version-id")
-
-// Run prompt directly
-result, err := client.Prompts.Run(ctx, "prompt-id", &promptrails.RunPromptParams{
-    Input: map[string]any{"question": "What is Go?"},
-})
 ```
 
 ### Executions
@@ -102,6 +112,15 @@ result, err := client.Prompts.Run(ctx, "prompt-id", &promptrails.RunPromptParams
 ```go
 executions, err := client.Executions.List(ctx, &promptrails.ListExecutionsParams{AgentID: "agent-id"})
 execution, err := client.Executions.Get(ctx, "execution-id")
+
+// Executions form a tree (supervisor delegation, handoff, workflow nodes)
+tree, err := client.Executions.Tree(ctx, "execution-id")
+_, err := client.Executions.Cancel(ctx, "execution-id")
+
+// Human-in-the-loop approvals (execution-scoped)
+inbox, err := client.Executions.ApprovalInbox(ctx, &promptrails.ListParams{})
+_, err := client.Executions.Approve(ctx, "execution-id", &promptrails.DecideParams{Reason: "ok"})
+_, err := client.Executions.Deny(ctx, "execution-id", &promptrails.DecideParams{Reason: "not allowed"})
 ```
 
 ### Credentials
@@ -187,22 +206,9 @@ to its live SSE stream with `client.Executions.Stream(ctx, executionID)`.
 ```go
 traces, err := client.Traces.List(ctx, &promptrails.ListTracesParams{AgentID: "agent-id", Kind: "llm"})
 trace, err := client.Traces.GetByTraceID(ctx, "trace-id")
-```
 
-### Costs
-
-```go
-summary, err := client.Costs.GetSummary(ctx)
-agentCosts, err := client.Costs.GetAgentSummary(ctx, "agent-id")
-```
-
-### Scores
-
-```go
-scores, err := client.Scores.List(ctx, &promptrails.ListScoresParams{ExecutionID: "exec-id"})
-score, err := client.Scores.Create(ctx, &promptrails.CreateScoreParams{...})
-configs, err := client.Scores.ListConfigs(ctx)
-aggregates, err := client.Scores.Aggregates(ctx, "config-id")
+// Aggregate cost / token / latency stats over a filtered set of traces
+summary, err := client.Traces.GetSummary(ctx, &promptrails.TraceFilterParams{AgentID: "agent-id"})
 ```
 
 ### MCP Tools
@@ -216,11 +222,8 @@ err := client.MCPTools.Delete(ctx, "tool-id")
 
 ### Approvals
 
-```go
-approvals, err := client.Approvals.List(ctx)
-approval, err := client.Approvals.Get(ctx, "approval-id")
-err := client.Approvals.Decide(ctx, "approval-id", "approved")
-```
+Approvals are execution-scoped — see `Executions.ApprovalInbox` /
+`Executions.Approve` / `Executions.Deny` under **Executions**.
 
 ### Webhook Triggers
 
@@ -240,16 +243,9 @@ tasks, err := client.A2A.ListTasks(ctx, &promptrails.ListTasksParams{AgentID: "a
 err := client.A2A.CancelTask(ctx, "task-id")
 ```
 
-### Media
+### Assets
 
 ```go
-models, err := client.MediaModels.List(ctx, &promptrails.ListMediaModelsParams{Provider: "fal"})
-
-result, err := client.Media.Generate(ctx, &promptrails.GenerateMediaParams{
-    Provider: "fal", MediaType: "image", Model: "fal-ai/flux/schnell",
-    Prompt: "A sunset", Config: map[string]any{"width": 1024},
-})
-
 assets, err := client.Assets.List(ctx, &promptrails.ListAssetsParams{MediaType: "image"})
 signed, err := client.Assets.GetSignedURL(ctx, "asset-id")
 err := client.Assets.Delete(ctx, "asset-id")

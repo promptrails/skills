@@ -40,8 +40,8 @@ The PromptRails skill teaches your AI assistant:
 
 - **SDK Usage** — Python (`promptrails`), JavaScript (`@promptrails/sdk`), and Go (`github.com/promptrails/go-sdk`) SDK patterns
 - **CLI Commands** — All `promptrails` CLI commands for agents, prompts, executions, credentials, and more
-- **Agent Management** — Creating, configuring, versioning, and executing agents (simple, chain, multi-agent, workflow, composite)
-- **Prompt Engineering** — Jinja2 templating, versioning, model assignment, and caching
+- **Agent Management** — Creating, configuring, versioning, and executing agents (two types: `agent`, `workflow`)
+- **Prompt Engineering** — Content-only Jinja2 templating and versioning (model/sampling live on the agent version)
 - **Tracing & Observability** — 18 span kinds, cost tracking, error debugging
 - **MCP Tools** — External tool integration via Model Context Protocol
 - **Data Sources** — Database connections with parameterized queries
